@@ -165,7 +165,8 @@ export class CompositionHelper {
             // Don't use the end position here in order to pick up any characters after the
             // composition has finished, for example when typing a non-composition character
             // (eg. 2) after a composition character.
-            input = this._textarea.value.substring(currentCompositionPosition.start);
+            const len = this._textarea.value.length - currentCompositionPosition.start;
+            input = this._textarea.value.substring(0, len);
           }
           if (input.length > 0) {
             this._coreService.triggerDataEvent(input, true);
