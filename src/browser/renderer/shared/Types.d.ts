@@ -3,8 +3,8 @@
  * @license MIT
  */
 
-import { FontWeight, Terminal } from 'xterm';
-import { IColorSet } from 'browser/Types';
+import { FontWeight, Terminal } from '@xterm/xterm';
+import { IColorSet, ITerminal } from 'browser/Types';
 import { IDisposable } from 'common/Types';
 import { IEvent } from 'common/EventEmitter';
 
@@ -107,8 +107,8 @@ export interface ITextureAtlas extends IDisposable {
    * Clear all glyphs from the texture atlas.
    */
   clearTexture(): void;
-  getRasterizedGlyph(code: number, bg: number, fg: number, ext: number): IRasterizedGlyph;
-  getRasterizedGlyphCombinedChar(chars: string, bg: number, fg: number, ext: number): IRasterizedGlyph;
+  getRasterizedGlyph(code: number, bg: number, fg: number, ext: number, restrictToCellHeight: boolean): IRasterizedGlyph;
+  getRasterizedGlyphCombinedChar(chars: string, bg: number, fg: number, ext: number, restrictToCellHeight: boolean): IRasterizedGlyph;
 }
 
 /**
@@ -168,6 +168,6 @@ export interface ISelectionRenderModel {
   readonly selectionStart: [number, number] | undefined;
   readonly selectionEnd: [number, number] | undefined;
   clear(): void;
-  update(terminal: Terminal, start: [number, number] | undefined, end: [number, number] | undefined, columnSelectMode?: boolean): void;
+  update(terminal: ITerminal, start: [number, number] | undefined, end: [number, number] | undefined, columnSelectMode?: boolean): void;
   isCellSelected(terminal: Terminal, x: number, y: number): boolean;
 }

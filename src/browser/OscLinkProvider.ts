@@ -3,7 +3,8 @@
  * @license MIT
  */
 
-import { IBufferRange, ILink, ILinkProvider } from 'browser/Types';
+import { IBufferRange, ILink } from 'browser/Types';
+import { ILinkProvider } from 'browser/services/Services';
 import { CellData } from 'common/buffer/CellData';
 import { IBufferService, IOptionsService, IOscLinkService } from 'common/services/Services';
 
@@ -104,7 +105,8 @@ export class OscLinkProvider implements ILinkProvider {
       }
     }
 
-    // TODO: Handle fetching and returning other link ranges to underline other links with the same id
+    // TODO: Handle fetching and returning other link ranges to underline other links with the same
+    //       id
     callback(result);
   }
 }
