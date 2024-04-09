@@ -21,7 +21,7 @@
  *   http://linux.die.net/man/7/urxvt
  */
 
-import { Disposable, toDisposable } from 'common/Lifecycle';
+import { Disposable, MutableDisposable, toDisposable } from 'common/Lifecycle';
 import { IInstantiationService, IOptionsService, IBufferService, ILogService, ICharsetService, ICoreService, ICoreMouseService, IUnicodeService, LogLevelEnum, ITerminalOptions, IOscLinkService } from 'common/services/Services';
 import { InstantiationService } from 'common/services/InstantiationService';
 import { LogService } from 'common/services/LogService';
@@ -57,7 +57,7 @@ export abstract class CoreTerminal extends Disposable implements ICoreTerminal {
 
   protected _inputHandler: InputHandler;
   private _writeBuffer: WriteBuffer;
-  private _windowsMode: IDisposable | undefined;
+  private _windowsWrappingHeuristics = this.register(new MutableDisposable());
 
   private readonly _onBinary = this.register(new EventEmitter<string>());
   public readonly onBinary = this._onBinary.event;
@@ -120,6 +120,7 @@ export abstract class CoreTerminal extends Disposable implements ICoreTerminal {
     this._oscLinkService = this._instantiationService.createInstance(OscLinkService);
     this._instantiationService.setService(IOscLinkService, this._oscLinkService);
 
+
     // Register input handler and handle/forward events
     this._inputHandler = this.register(new InputHandler(this._bufferService, this._charsetService, this.coreService, this._logService, this.optionsService, this._oscLinkService, this.coreMouseService, this.unicodeService));
     this.register(forwardEvent(this._inputHandler.onLineFeed, this._onLineFeed));
@@ -131,7 +132,7 @@ export abstract class CoreTerminal extends Disposable implements ICoreTerminal {
     this.register(forwardEvent(this.coreService.onBinary, this._onBinary));
     this.register(this.coreService.onRequestScrollToBottom(() => this.scrollToBottom()));
     this.register(this.coreService.onUserInput(() =>  this._writeBuffer.handleUserInput()));
-    this.register(this.optionsService.onSpecificOptionChange('windowsMode', e => this._handleWindowsModeOptionChange(e)));
+    this.register(this.optionsService.onMultipleOptionChange(['windowsMode', 'windowsPty'], () => this._handleWindowsPtyOptionChange()));
     this.register(this._bufferService.onScroll(event => {
       this._onScroll.fire({ position: this._bufferService.buffer.ydisp, source: ScrollSource.TERMINAL });
       this._inputHandler.markRangeDirty(this._bufferService.buffer.scrollTop, this._bufferService.buffer.scrollBottom);
@@ -144,11 +145,6 @@ export abstract class CoreTerminal extends Disposable implements ICoreTerminal {
     // Setup WriteBuffer
     this._writeBuffer = this.register(new WriteBuffer((data, promiseResult) => this._inputHandler.parse(data, promiseResult)));
     this.register(forwardEvent(this._writeBuffer.onWriteParsed, this._onWriteParsed));
-
-    this.register(toDisposable(() => {
-      this._windowsMode?.dispose();
-      this._windowsMode = undefined;
-    }));
   }
 
   public write(data: string | Uint8Array, callback?: () => void): void {
@@ -170,6 +166,10 @@ export abstract class CoreTerminal extends Disposable implements ICoreTerminal {
       hasWriteSyncWarnHappened = true;
     }
     this._writeBuffer.writeSync(data, maxSubsequentCalls);
+  }
+
+  public input(data: string, wasUserInput: boolean = true): void {
+    this.coreService.triggerDataEvent(data, wasUserInput);
   }
 
   public resize(x: number, y: number): void {
@@ -195,38 +195,32 @@ export abstract class CoreTerminal extends Disposable implements ICoreTerminal {
   /**
    * Scroll the display of the terminal
    * @param disp The number of lines to scroll down (negative scroll up).
-   * @param suppressScrollEvent Don't emit the scroll event as scrollLines. This is used
-   * to avoid unwanted events being handled by the viewport when the event was triggered from the
-   * viewport originally.
+   * @param suppressScrollEvent Don't emit the scroll event as scrollLines. This is used to avoid
+   * unwanted events being handled by the viewport when the event was triggered from the viewport
+   * originally.
+   * @param source Which component the event came from.
    */
   public scrollLines(disp: number, suppressScrollEvent?: boolean, source?: ScrollSource): void {
     this._bufferService.scrollLines(disp, suppressScrollEvent, source);
   }
 
-  /**
-   * Scroll the display of the terminal by a number of pages.
-   * @param pageCount The number of pages to scroll (negative scrolls up).
-   */
   public scrollPages(pageCount: number): void {
-    this._bufferService.scrollPages(pageCount);
+    this.scrollLines(pageCount * (this.rows - 1));
   }
 
-  /**
-   * Scrolls the display of the terminal to the top.
-   */
   public scrollToTop(): void {
-    this._bufferService.scrollToTop();
+    this.scrollLines(-this._bufferService.buffer.ydisp);
   }
 
-  /**
-   * Scrolls the display of the terminal to the bottom.
-   */
   public scrollToBottom(): void {
-    this._bufferService.scrollToBottom();
+    this.scrollLines(this._bufferService.buffer.ybase - this._bufferService.buffer.ydisp);
   }
 
   public scrollToLine(line: number): void {
-    this._bufferService.scrollToLine(line);
+    const scrollAmount = line - this._bufferService.buffer.ydisp;
+    if (scrollAmount !== 0) {
+      this.scrollLines(scrollAmount);
+    }
   }
 
   /** Add handler for ESC escape sequence. See xterm.d.ts for details. */
@@ -250,9 +244,7 @@ export abstract class CoreTerminal extends Disposable implements ICoreTerminal {
   }
 
   protected _setup(): void {
-    if (this.optionsService.rawOptions.windowsMode) {
-      this._enableWindowsMode();
-    }
+    this._handleWindowsPtyOptionChange();
   }
 
   public reset(): void {
@@ -263,30 +255,35 @@ export abstract class CoreTerminal extends Disposable implements ICoreTerminal {
     this.coreMouseService.reset();
   }
 
-  private _handleWindowsModeOptionChange(value: boolean): void {
+
+  private _handleWindowsPtyOptionChange(): void {
+    let value = false;
+    const windowsPty = this.optionsService.rawOptions.windowsPty;
+    if (windowsPty && windowsPty.buildNumber !== undefined && windowsPty.buildNumber !== undefined) {
+      value = !!(windowsPty.backend === 'conpty' && windowsPty.buildNumber < 21376);
+    } else if (this.optionsService.rawOptions.windowsMode) {
+      value = true;
+    }
     if (value) {
-      this._enableWindowsMode();
+      this._enableWindowsWrappingHeuristics();
     } else {
-      this._windowsMode?.dispose();
-      this._windowsMode = undefined;
+      this._windowsWrappingHeuristics.clear();
     }
   }
 
-  protected _enableWindowsMode(): void {
-    if (!this._windowsMode) {
+  protected _enableWindowsWrappingHeuristics(): void {
+    if (!this._windowsWrappingHeuristics.value) {
       const disposables: IDisposable[] = [];
       disposables.push(this.onLineFeed(updateWindowsModeWrappedState.bind(null, this._bufferService)));
       disposables.push(this.registerCsiHandler({ final: 'H' }, () => {
         updateWindowsModeWrappedState(this._bufferService);
         return false;
       }));
-      this._windowsMode = {
-        dispose: () => {
-          for (const d of disposables) {
-            d.dispose();
-          }
+      this._windowsWrappingHeuristics.value = toDisposable(() => {
+        for (const d of disposables) {
+          d.dispose();
         }
-      };
+      });
     }
   }
 }

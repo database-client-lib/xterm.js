@@ -7,11 +7,11 @@
  * to be stable and consumed by external programs.
  */
 
-declare module 'xterm-headless' {
+declare module '@xterm/headless' {
   /**
    * A string representing log level.
    */
-  export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'off';
+  export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'off';
 
   /**
    * An object containing options for the terminal.
@@ -19,7 +19,8 @@ declare module 'xterm-headless' {
   export interface ITerminalOptions {
     /**
      * Whether to allow the use of proposed API. When false, any usage of APIs
-     * marked as experimental/proposed will throw an error. The default is false.
+     * marked as experimental/proposed will throw an error. The default is
+     * false.
      */
     allowProposedApi?: boolean;
 
@@ -63,13 +64,13 @@ declare module 'xterm-headless' {
     cursorWidth?: number;
 
     /**
-     * Whether to draw custom glyphs for block element and box drawing characters instead of using
-     * the font. This should typically result in better rendering with continuous lines, even when
-     * line height and letter spacing is used. Note that this doesn't work with the DOM renderer
-     * which renders all characters using the font. The default is true.
+     * Whether to draw custom glyphs for block element and box drawing
+     * characters instead of using the font. This should typically result in
+     * better rendering with continuous lines, even when line height and letter
+     * spacing is used. Note that this doesn't work with the DOM renderer which
+     * renders all characters using the font. The default is true.
      */
     customGlyphs?: boolean;
-
     /**
      * Whether input should be disabled.
      */
@@ -99,13 +100,19 @@ declare module 'xterm-headless' {
      * What log level to use, this will log for all levels below and including
      * what is set:
      *
-     * 1. debug
-     * 2. info (default)
-     * 3. warn
-     * 4. error
-     * 5. off
+     * 1. trace
+     * 2. debug
+     * 3. info (default)
+     * 4. warn
+     * 5. error
+     * 6. off
      */
     logLevel?: LogLevel;
+
+    /**
+     * A logger to use instead of `console`.
+     */
+    logger?: ILogger | null;
 
     /**
      * Whether to treat option as the meta key.
@@ -134,6 +141,23 @@ declare module 'xterm-headless' {
     minimumContrastRatio?: number;
 
     /**
+     * Whether to rescale glyphs horizontally that are a single cell wide but
+     * have glyphs that would overlap following cell(s). This typically happens
+     * for ambiguous width characters (eg. the roman numeral characters U+2160+)
+     * which aren't featured in monospace fonts. This is an important feature
+     * for achieving GB18030 compliance.
+     *
+     * The following glyphs will never be rescaled:
+     *
+     * - Emoji glyphs
+     * - Powerline glyphs
+     * - Nerd font glyphs
+     *
+     * Note that this doesn't work with the DOM renderer. The default is false.
+     */
+    rescaleOverlappingGlyphs?: boolean;
+
+    /**
      * Whether to select the word under the cursor on right click, this is
      * standard behavior in a lot of macOS applications.
      */
@@ -149,7 +173,7 @@ declare module 'xterm-headless' {
     /**
      * The amount of scrollback in the terminal. Scrollback is the amount of
      * rows that are retained when lines are scrolled beyond the initial
-     * viewport.
+     * viewport. Defaults to 1000.
      */
     scrollback?: number;
 
@@ -183,13 +207,38 @@ declare module 'xterm-headless' {
      * - Reflow is disabled.
      * - Lines are assumed to be wrapped if the last character of the line is
      *   not whitespace.
+     *
+     * When using conpty on Windows 11 version >= 21376, it is recommended to
+     * disable this because native text wrapping sequences are output correctly
+     * thanks to https://github.com/microsoft/terminal/issues/405
+     *
+     * @deprecated Use {@link windowsPty}. This value will be ignored if
+     * windowsPty is set.
      */
     windowsMode?: boolean;
 
     /**
-     * A string containing all characters that are considered word separated by the
-     * double click to select work logic.
-    */
+     * Compatibility information when the pty is known to be hosted on Windows.
+     * Setting this will turn on certain heuristics/workarounds depending on the
+     * values:
+     *
+     * - `if (!!windowsCompat)`
+     *   - When increasing the rows in the terminal, the amount increased into
+     *     the scrollback. This is done because ConPTY does not behave like
+     *     expect scrollback to come back into the viewport, instead it makes
+     *     empty rows at of the viewport. Not having this behavior can result in
+     *     missing data as the rows get replaced.
+     * - `if !(backend === 'conpty' && buildNumber >= 21376)`
+     *   - Reflow is disabled
+     *   - Lines are assumed to be wrapped if the last character of the line is
+     *     not whitespace.
+     */
+    windowsPty?: IWindowsPty;
+
+    /**
+     * A string containing all characters that are considered word separated by
+     * the double click to select work logic.
+     */
     wordSeparator?: string;
 
     /**
@@ -266,6 +315,51 @@ declare module 'xterm-headless' {
   }
 
   /**
+   * Pty information for Windows.
+   */
+  export interface IWindowsPty {
+    /**
+     * What pty emulation backend is being used.
+     */
+    backend?: 'conpty' | 'winpty';
+    /**
+     * The Windows build version (eg. 19045)
+     */
+    buildNumber?: number;
+  }
+
+  /**
+   * A replacement logger for `console`.
+   */
+  export interface ILogger {
+    /**
+     * Log a trace message, this will only be called if
+     * {@link ITerminalOptions.logLevel} is set to trace.
+     */
+    trace(message: string, ...args: any[]): void;
+    /**
+     * Log a debug message, this will only be called if
+     * {@link ITerminalOptions.logLevel} is set to debug or below.
+     */
+    debug(message: string, ...args: any[]): void;
+    /**
+     * Log a debug message, this will only be called if
+     * {@link ITerminalOptions.logLevel} is set to info or below.
+     */
+    info(message: string, ...args: any[]): void;
+    /**
+     * Log a debug message, this will only be called if
+     * {@link ITerminalOptions.logLevel} is set to warn or below.
+     */
+    warn(message: string, ...args: any[]): void;
+    /**
+     * Log a debug message, this will only be called if
+     * {@link ITerminalOptions.logLevel} is set to error or below.
+     */
+    error(message: string | Error, ...args: any[]): void;
+  }
+
+  /**
    * An object that can be disposed via a dispose function.
    */
   export interface IDisposable {
@@ -285,29 +379,32 @@ declare module 'xterm-headless' {
    * is trimmed and lines are added or removed. This is a single line that may
    * be part of a larger wrapped line.
    */
-  export interface IMarker extends IDisposable {
+  export interface IMarker extends IDisposableWithEvent {
     /**
      * A unique identifier for this marker.
      */
     readonly id: number;
 
     /**
-     * Whether this marker is disposed.
-     */
-    readonly isDisposed: boolean;
-
-    /**
      * The actual line index in the buffer at this point in time. This is set to
      * -1 if the marker has been disposed.
      */
     readonly line: number;
+  }
 
+  /**
+   * Represents a disposable that tracks is disposed state.
+   */
+  export interface IDisposableWithEvent extends IDisposable {
     /**
-     * Event listener to get notified when the marker gets disposed. Automatic disposal
-     * might happen for a marker, that got invalidated by scrolling out or removal of
-     * a line from the buffer.
+     * Event listener to get notified when this gets disposed.
      */
     onDispose: IEvent<void>;
+
+    /**
+     * Whether this is disposed.
+     */
+    readonly isDisposed: boolean;
   }
 
   /**
@@ -327,7 +424,8 @@ declare module 'xterm-headless' {
   }
 
   /**
-   * Enable various window manipulation and report features (CSI Ps ; Ps ; Ps t).
+   * Enable various window manipulation and report features
+   * (`CSI Ps ; Ps ; Ps t`).
    *
    * Most settings have no default implementation, as they heavily rely on
    * the embedding environment.
@@ -347,10 +445,10 @@ declare module 'xterm-headless' {
    *
    * Note on security:
    * Most features are meant to deal with some information of the host machine
-   * where the terminal runs on. This is seen as a security risk possibly leaking
-   * sensitive data of the host to the program in the terminal. Therefore all options
-   * (even those without a default implementation) are guarded by the boolean flag
-   * and disabled by default.
+   * where the terminal runs on. This is seen as a security risk possibly
+   * leaking sensitive data of the host to the program in the terminal.
+   * Therefore all options (even those without a default implementation) are
+   * guarded by the boolean flag and disabled by default.
    */
   export interface IWindowOptions {
     /**
@@ -531,23 +629,36 @@ declare module 'xterm-headless' {
     readonly modes: IModes;
 
     /**
-     * Gets or sets the terminal options. This supports setting multiple options.
+     * Gets or sets the terminal options. This supports setting multiple
+     * options.
      *
      * @example Get a single option
-     * ```typescript
+     * ```ts
      * console.log(terminal.options.fontSize);
      * ```
      *
-     * @example Set a single option
-     * ```typescript
+     * @example Set a single option:
+     * ```ts
      * terminal.options.fontSize = 12;
+     * ```
+     * Note that for options that are object, a new object must be used in order
+     * to take effect as a reference comparison will be done:
+     * ```ts
+     * const newValue = terminal.options.theme;
+     * newValue.background = '#000000';
+     *
+     * // This won't work
+     * terminal.options.theme = newValue;
+     *
+     * // This will work
+     * terminal.options.theme = { ...newValue };
      * ```
      *
      * @example Set multiple options
-     * ```typescript
+     * ```ts
      * terminal.options = {
      *   fontSize: 12,
-     *   fontFamily: 'Courier New',
+     *   fontFamily: 'Courier New'
      * };
      * ```
      */
@@ -623,6 +734,18 @@ declare module 'xterm-headless' {
      * @returns an `IDisposable` to stop listening.
      */
     onTitleChange: IEvent<string>;
+
+    /**
+     * Input data to application side. The data is treated the same way input
+     * typed into the terminal would (ie. the {@link onData} event will fire).
+     * @param data The data to forward to the application.
+     * @param wasUserInput Whether the input is genuine user input. This is true
+     * by default and triggers additionalbehavior like focus or selection
+     * clearing. Set this to false if the data sent should not be treated like
+     * user input would, for example passing an escape sequence to the
+     * application.
+     */
+    input(data: string, wasUserInput?: boolean): void;
 
     /**
      * Resizes the terminal. It's best practice to debounce calls to resize,
@@ -1146,6 +1269,7 @@ declare module 'xterm-headless' {
      * Unicode version dependent wcwidth implementation.
      */
     wcwidth(codepoint: number): 0 | 1 | 2;
+    charProperties(codepoint: number, preceding: number): number;
   }
 
   /**
@@ -1212,6 +1336,6 @@ declare module 'xterm-headless' {
     /**
      * Auto-Wrap Mode (DECAWM): `CSI ? 7 h`
      */
-    readonly wraparoundMode: boolean
+    readonly wraparoundMode: boolean;
   }
 }

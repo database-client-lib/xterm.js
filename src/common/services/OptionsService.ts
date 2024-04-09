@@ -3,11 +3,11 @@
  * @license MIT
  */
 
-import { IOptionsService, ITerminalOptions, FontWeight } from 'common/services/Services';
-import { EventEmitter, IEvent } from 'common/EventEmitter';
+import { EventEmitter } from 'common/EventEmitter';
+import { Disposable, toDisposable } from 'common/Lifecycle';
 import { isMac } from 'common/Platform';
 import { CursorStyle, IDisposable } from 'common/Types';
-import { Disposable } from 'common/Lifecycle';
+import { FontWeight, IOptionsService, ITerminalOptions } from 'common/services/Services';
 
 export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
   cols: 80,
@@ -15,18 +15,22 @@ export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
   cursorBlink: false,
   cursorStyle: 'block',
   cursorWidth: 1,
+  cursorInactiveStyle: 'outline',
   customGlyphs: true,
   drawBoldTextInBrightColors: true,
+  documentOverride: null,
   fastScrollModifier: 'alt',
   fastScrollSensitivity: 5,
   fontFamily: 'courier-new, courier, monospace',
   fontSize: 15,
   fontWeight: 'normal',
   fontWeightBold: 'bold',
+  ignoreBracketedPasteMode: false,
   lineHeight: 1.0,
   letterSpacing: 0,
   linkHandler: null,
   logLevel: 'info',
+  logger: null,
   scrollback: 1000,
   scrollOnUserInput: true,
   scrollSensitivity: 1,
@@ -40,9 +44,11 @@ export const DEFAULT_OPTIONS: Readonly<Required<ITerminalOptions>> = {
   allowTransparency: false,
   tabStopWidth: 8,
   theme: {},
+  rescaleOverlappingGlyphs: false,
   rightClickSelectsWord: isMac,
   windowOptions: {},
   windowsMode: false,
+  windowsPty: {},
   wordSeparator: ' ()[]{}\',"`',
   altClickMovesCursor: true,
   convertEol: false,
@@ -81,6 +87,13 @@ export class OptionsService extends Disposable implements IOptionsService {
     this.rawOptions = defaultOptions;
     this.options = { ... defaultOptions };
     this._setupOptions();
+
+    // Clear out options that could link outside xterm.js as they could easily cause an embedder
+    // memory leak
+    this.register(toDisposable(() => {
+      this.rawOptions.linkHandler = null;
+      this.rawOptions.documentOverride = null;
+    }));
   }
 
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -177,11 +190,15 @@ export class OptionsService extends Disposable implements IOptionsService {
         if (value <= 0) {
           throw new Error(`${key} cannot be less than or equal to 0, value: ${value}`);
         }
+        break;
       case 'rows':
       case 'cols':
         if (!value && value !== 0) {
           throw new Error(`${key} must be numeric, value: ${value}`);
         }
+        break;
+      case 'windowsPty':
+        value = value ?? {};
         break;
     }
     return value;

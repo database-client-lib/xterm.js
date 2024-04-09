@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import { IDisposable, IMarker, ILinkProvider, IDecorationOptions, IDecoration } from 'xterm';
+import { IDisposable, IMarker, ILinkProvider, IDecorationOptions, IDecoration } from '@xterm/xterm';
 import { IEvent, EventEmitter } from 'common/EventEmitter';
 import { ICharacterJoinerService, ICharSizeService, ICoreBrowserService, IMouseService, IRenderService, ISelectionService, IThemeService } from 'browser/services/Services';
 import { IRenderDimensions, IRenderer, IRequestRedrawEvent } from 'browser/renderer/shared/Types';
@@ -48,11 +48,12 @@ export class MockTerminal implements ITerminal {
   public onRender!: IEvent<{ start: number, end: number }>;
   public onResize!: IEvent<{ cols: number, rows: number }>;
   public markers!: IMarker[];
+  public linkifier: ILinkifier2 | undefined;
   public coreMouseService!: ICoreMouseService;
   public coreService!: ICoreService;
   public optionsService!: IOptionsService;
   public unicodeService!: IUnicodeService;
-  public addMarker(cursorYOffset: number): IMarker {
+  public registerMarker(cursorYOffset: number): IMarker {
     throw new Error('Method not implemented.');
   }
   public selectLines(start: number, end: number): void {
@@ -71,6 +72,9 @@ export class MockTerminal implements ITerminal {
   public focus(): void {
     throw new Error('Method not implemented.');
   }
+  public input(data: string, wasUserInput: boolean = true): void {
+    throw new Error('Method not implemented.');
+  }
   public resize(columns: number, rows: number): void {
     throw new Error('Method not implemented.');
   }
@@ -84,6 +88,9 @@ export class MockTerminal implements ITerminal {
     throw new Error('Method not implemented.');
   }
   public attachCustomKeyEventHandler(customKeyEventHandler: (event: KeyboardEvent) => boolean): void {
+    throw new Error('Method not implemented.');
+  }
+  public attachCustomWheelEventHandler(customWheelEventHandler: (event: WheelEvent) => boolean): void {
     throw new Error('Method not implemented.');
   }
   public registerCsiHandler(id: IFunctionIdentifier, callback: (params: IParams) => boolean | Promise<boolean>): IDisposable {
@@ -148,7 +155,6 @@ export class MockTerminal implements ITerminal {
   }
   public bracketedPasteMode!: boolean;
   public renderer!: IRenderer;
-  public linkifier2!: ILinkifier2;
   public isFocused!: boolean;
   public options!: Required<ITerminalOptions>;
   public element!: HTMLElement;
@@ -296,6 +302,8 @@ export class MockRenderer implements IRenderer {
 }
 
 export class MockViewport implements IViewport {
+  private readonly _onRequestScrollLines = new EventEmitter<{ amount: number, suppressScrollEvent: boolean }>();
+  public readonly onRequestScrollLines = this._onRequestScrollLines.event;
   public dispose(): void {
     throw new Error('Method not implemented.');
   }
@@ -318,6 +326,11 @@ export class MockViewport implements IViewport {
   }
   public getBufferElements(startLine: number, endLine?: number | undefined): { bufferElements: HTMLElement[], cursorElement?: HTMLElement | undefined } {
     throw new Error('Method not implemented.');
+  }
+  public scrollLines(disp: number): void {
+    this._onRequestScrollLines.fire({ amount: disp, suppressScrollEvent: false });
+  }
+  public reset(): void {
   }
 }
 
@@ -343,10 +356,15 @@ export class MockCompositionHelper implements ICompositionHelper {
 }
 
 export class MockCoreBrowserService implements ICoreBrowserService {
+  public onDprChange = new EventEmitter<number>().event;
+  public onWindowChange = new EventEmitter<Window & typeof globalThis, void>().event;
   public serviceBrand: undefined;
   public isFocused: boolean = true;
   public get window(): Window & typeof globalThis {
     throw Error('Window object not available in tests');
+  }
+  public get mainDocument(): Document {
+    throw Error('Document object not available in tests');
   }
   public dpr: number = 1;
 }
@@ -522,6 +540,8 @@ export class MockThemeService implements IThemeService{
       css.toColor('#ad7fa8'),
       css.toColor('#34e2e2'),
       css.toColor('#eeeeec')
-    ]
+    ],
+    selectionBackgroundOpaque: css.toColor('#ff0000'),
+    selectionInactiveBackgroundOpaque: css.toColor('#00ff00')
   } as any;
 }

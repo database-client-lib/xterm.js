@@ -3,16 +3,19 @@
  * @license MIT
  */
 
-import { BOLD_CLASS, CURSOR_BLINK_CLASS, CURSOR_CLASS, CURSOR_STYLE_BAR_CLASS, CURSOR_STYLE_BLOCK_CLASS, CURSOR_STYLE_UNDERLINE_CLASS, DIM_CLASS, DomRendererRowFactory, ITALIC_CLASS } from 'browser/renderer/dom/DomRendererRowFactory';
+import { DomRendererRowFactory, RowCss } from 'browser/renderer/dom/DomRendererRowFactory';
+import { WidthCache } from 'browser/renderer/dom/WidthCache';
 import { INVERTED_DEFAULT_COLOR } from 'browser/renderer/shared/Constants';
 import { createRenderDimensions } from 'browser/renderer/shared/RendererUtils';
-import { IRenderDimensions, IRenderer, IRequestRedrawEvent } from 'browser/renderer/shared/Types';
+import { createSelectionRenderModel } from 'browser/renderer/shared/SelectionRenderModel';
+import { IRenderDimensions, IRenderer, IRequestRedrawEvent, ISelectionRenderModel } from 'browser/renderer/shared/Types';
 import { ICharSizeService, ICoreBrowserService, IThemeService } from 'browser/services/Services';
-import { ILinkifier2, ILinkifierEvent, ReadonlyColorSet } from 'browser/Types';
+import { ILinkifier2, ILinkifierEvent, ITerminal, ReadonlyColorSet } from 'browser/Types';
 import { color } from 'common/Color';
 import { EventEmitter } from 'common/EventEmitter';
 import { Disposable, toDisposable } from 'common/Lifecycle';
 import { IBufferService, IInstantiationService, IOptionsService } from 'common/services/Services';
+
 
 const TERMINAL_CLASS_PREFIX = 'xterm-dom-renderer-owner-';
 const ROW_CONTAINER_CLASS = 'xterm-rows';
@@ -37,16 +40,20 @@ export class DomRenderer extends Disposable implements IRenderer {
   private _rowContainer: HTMLElement;
   private _rowElements: HTMLElement[] = [];
   private _selectionContainer: HTMLElement;
-  private _cellToRowElements: Int16Array[] = [];
+  private _widthCache: WidthCache;
+  private _selectionRenderModel: ISelectionRenderModel = createSelectionRenderModel();
 
   public dimensions: IRenderDimensions;
 
   public readonly onRequestRedraw = this.register(new EventEmitter<IRequestRedrawEvent>()).event;
 
   constructor(
+    private readonly _terminal: ITerminal,
+    private readonly _document: Document,
     private readonly _element: HTMLElement,
     private readonly _screenElement: HTMLElement,
     private readonly _viewportElement: HTMLElement,
+    private readonly _helperContainer: HTMLElement,
     private readonly _linkifier2: ILinkifier2,
     @IInstantiationService instantiationService: IInstantiationService,
     @ICharSizeService private readonly _charSizeService: ICharSizeService,
@@ -56,12 +63,12 @@ export class DomRenderer extends Disposable implements IRenderer {
     @IThemeService private readonly _themeService: IThemeService
   ) {
     super();
-    this._rowContainer = document.createElement('div');
+    this._rowContainer = this._document.createElement('div');
     this._rowContainer.classList.add(ROW_CONTAINER_CLASS);
     this._rowContainer.style.lineHeight = 'normal';
     this._rowContainer.setAttribute('aria-hidden', 'true');
     this._refreshRowElements(this._bufferService.cols, this._bufferService.rows);
-    this._selectionContainer = document.createElement('div');
+    this._selectionContainer = this._document.createElement('div');
     this._selectionContainer.classList.add(SELECTION_CLASS);
     this._selectionContainer.setAttribute('aria-hidden', 'true');
 
@@ -88,9 +95,19 @@ export class DomRenderer extends Disposable implements IRenderer {
       // https://github.com/xtermjs/xterm.js/issues/2960
       this._rowContainer.remove();
       this._selectionContainer.remove();
+      this._widthCache.dispose();
       this._themeStyleElement.remove();
       this._dimensionsStyleElement.remove();
     }));
+
+    this._widthCache = new WidthCache(this._document, this._helperContainer);
+    this._widthCache.setFont(
+      this._optionsService.rawOptions.fontFamily,
+      this._optionsService.rawOptions.fontSize,
+      this._optionsService.rawOptions.fontWeight,
+      this._optionsService.rawOptions.fontWeightBold
+    );
+    this._setDefaultSpacing();
   }
 
   private _updateDimensions(): void {
@@ -117,16 +134,15 @@ export class DomRenderer extends Disposable implements IRenderer {
     }
 
     if (!this._dimensionsStyleElement) {
-      this._dimensionsStyleElement = document.createElement('style');
+      this._dimensionsStyleElement = this._document.createElement('style');
       this._screenElement.appendChild(this._dimensionsStyleElement);
     }
 
     const styles =
       `${this._terminalSelector} .${ROW_CONTAINER_CLASS} span {` +
-      ` display: inline-block;` +
+      ` display: inline-block;` +   // TODO: find workaround for inline-block (creates ~20% render penalty)
       ` height: 100%;` +
       ` vertical-align: top;` +
-      ` width: ${this.dimensions.css.cell.width}px` +
       `}`;
 
     this._dimensionsStyleElement.textContent = styles;
@@ -138,7 +154,7 @@ export class DomRenderer extends Disposable implements IRenderer {
 
   private _injectCss(colors: ReadonlyColorSet): void {
     if (!this._themeStyleElement) {
-      this._themeStyleElement = document.createElement('style');
+      this._themeStyleElement = this._document.createElement('style');
       this._screenElement.appendChild(this._themeStyleElement);
     }
 
@@ -148,6 +164,8 @@ export class DomRenderer extends Disposable implements IRenderer {
       ` color: ${colors.foreground.css};` +
       ` font-family: ${this._optionsService.rawOptions.fontFamily};` +
       ` font-size: ${this._optionsService.rawOptions.fontSize}px;` +
+      ` font-kerning: none;` +
+      ` white-space: pre` +
       `}`;
     styles +=
       `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .xterm-dim {` +
@@ -155,57 +173,75 @@ export class DomRenderer extends Disposable implements IRenderer {
       `}`;
     // Text styles
     styles +=
-      `${this._terminalSelector} span:not(.${BOLD_CLASS}) {` +
+      `${this._terminalSelector} span:not(.${RowCss.BOLD_CLASS}) {` +
       ` font-weight: ${this._optionsService.rawOptions.fontWeight};` +
       `}` +
-      `${this._terminalSelector} span.${BOLD_CLASS} {` +
+      `${this._terminalSelector} span.${RowCss.BOLD_CLASS} {` +
       ` font-weight: ${this._optionsService.rawOptions.fontWeightBold};` +
       `}` +
-      `${this._terminalSelector} span.${ITALIC_CLASS} {` +
+      `${this._terminalSelector} span.${RowCss.ITALIC_CLASS} {` +
       ` font-style: italic;` +
       `}`;
     // Blink animation
+    const blinkAnimationUnderlineId = `blink_underline_${this._terminalClass}`;
+    const blinkAnimationBarId = `blink_bar_${this._terminalClass}`;
+    const blinkAnimationBlockId = `blink_block_${this._terminalClass}`;
     styles +=
-      `@keyframes blink_box_shadow` + `_` + this._terminalClass + ` {` +
+      `@keyframes ${blinkAnimationUnderlineId} {` +
+      ` 50% {` +
+      `  border-bottom-style: hidden;` +
+      ` }` +
+      `}`;
+    styles +=
+      `@keyframes ${blinkAnimationBarId} {` +
       ` 50% {` +
       `  box-shadow: none;` +
       ` }` +
       `}`;
     styles +=
-      `@keyframes blink_block` + `_` + this._terminalClass + ` {` +
+      `@keyframes ${blinkAnimationBlockId} {` +
       ` 0% {` +
       `  background-color: ${colors.cursor.css};` +
       `  color: ${colors.cursorAccent.css};` +
       ` }` +
       ` 50% {` +
-      `  background-color: ${colors.cursorAccent.css};` +
+      `  background-color: inherit;` +
       `  color: ${colors.cursor.css};` +
       ` }` +
       `}`;
     // Cursor
     styles +=
-      `${this._terminalSelector} .${ROW_CONTAINER_CLASS}:not(.${FOCUS_CLASS}) .${CURSOR_CLASS}.${CURSOR_STYLE_BLOCK_CLASS} ,` +
-      `${this._terminalSelector} .${ROW_CONTAINER_CLASS}:not(.${FOCUS_CLASS}) .${CURSOR_CLASS}.${CURSOR_STYLE_BAR_CLASS} ,` +
-      `${this._terminalSelector} .${ROW_CONTAINER_CLASS}:not(.${FOCUS_CLASS}) .${CURSOR_CLASS}.${CURSOR_STYLE_UNDERLINE_CLASS} ` +
-      `{` +
-      ` outline: 1px solid ${colors.cursor.css};` +
-      ` outline-offset: -1px;` +
+      `${this._terminalSelector} .${ROW_CONTAINER_CLASS}.${FOCUS_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_BLINK_CLASS}.${RowCss.CURSOR_STYLE_UNDERLINE_CLASS} {` +
+      ` animation: ${blinkAnimationUnderlineId} 1s step-end infinite;` +
       `}` +
-      `${this._terminalSelector} .${ROW_CONTAINER_CLASS}.${FOCUS_CLASS} .${CURSOR_CLASS}.${CURSOR_BLINK_CLASS}:not(.${CURSOR_STYLE_BLOCK_CLASS}) {` +
-      ` animation: blink_box_shadow` + `_` + this._terminalClass + ` 1s step-end infinite;` +
+      `${this._terminalSelector} .${ROW_CONTAINER_CLASS}.${FOCUS_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_BLINK_CLASS}.${RowCss.CURSOR_STYLE_BAR_CLASS} {` +
+      ` animation: ${blinkAnimationBarId} 1s step-end infinite;` +
       `}` +
-      `${this._terminalSelector} .${ROW_CONTAINER_CLASS}.${FOCUS_CLASS} .${CURSOR_CLASS}.${CURSOR_BLINK_CLASS}.${CURSOR_STYLE_BLOCK_CLASS} {` +
-      ` animation: blink_block` + `_` + this._terminalClass + ` 1s step-end infinite;` +
+      `${this._terminalSelector} .${ROW_CONTAINER_CLASS}.${FOCUS_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_BLINK_CLASS}.${RowCss.CURSOR_STYLE_BLOCK_CLASS} {` +
+      ` animation: ${blinkAnimationBlockId} 1s step-end infinite;` +
       `}` +
-      `${this._terminalSelector} .${ROW_CONTAINER_CLASS}.${FOCUS_CLASS} .${CURSOR_CLASS}.${CURSOR_STYLE_BLOCK_CLASS} {` +
+      // !important helps fix an issue where the cursor will not render on top of the selection,
+      // however it's very hard to fix this issue and retain the blink animation without the use of
+      // !important. So this edge case fails when cursor blink is on.
+      `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_BLOCK_CLASS} {` +
       ` background-color: ${colors.cursor.css};` +
       ` color: ${colors.cursorAccent.css};` +
       `}` +
-      `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${CURSOR_CLASS}.${CURSOR_STYLE_BAR_CLASS} {` +
+      `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_BLOCK_CLASS}:not(.${RowCss.CURSOR_BLINK_CLASS}) {` +
+      ` background-color: ${colors.cursor.css} !important;` +
+      ` color: ${colors.cursorAccent.css} !important;` +
+      `}` +
+      `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_OUTLINE_CLASS} {` +
+      ` outline: 1px solid ${colors.cursor.css};` +
+      ` outline-offset: -1px;` +
+      `}` +
+      `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_BAR_CLASS} {` +
       ` box-shadow: ${this._optionsService.rawOptions.cursorWidth}px 0 0 ${colors.cursor.css} inset;` +
       `}` +
-      `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${CURSOR_CLASS}.${CURSOR_STYLE_UNDERLINE_CLASS} {` +
-      ` box-shadow: 0 -1px 0 ${colors.cursor.css} inset;` +
+      `${this._terminalSelector} .${ROW_CONTAINER_CLASS} .${RowCss.CURSOR_CLASS}.${RowCss.CURSOR_STYLE_UNDERLINE_CLASS} {` +
+      ` border-bottom: 1px ${colors.cursor.css};` +
+      ` border-bottom-style: solid;` +
+      ` height: calc(100% - 1px);` +
       `}`;
     // Selection
     styles +=
@@ -228,25 +264,42 @@ export class DomRenderer extends Disposable implements IRenderer {
     for (const [i, c] of colors.ansi.entries()) {
       styles +=
         `${this._terminalSelector} .${FG_CLASS_PREFIX}${i} { color: ${c.css}; }` +
-        `${this._terminalSelector} .${FG_CLASS_PREFIX}${i}.${DIM_CLASS} { color: ${color.multiplyOpacity(c, 0.5).css}; }` +
+        `${this._terminalSelector} .${FG_CLASS_PREFIX}${i}.${RowCss.DIM_CLASS} { color: ${color.multiplyOpacity(c, 0.5).css}; }` +
         `${this._terminalSelector} .${BG_CLASS_PREFIX}${i} { background-color: ${c.css}; }`;
     }
     styles +=
       `${this._terminalSelector} .${FG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR} { color: ${color.opaque(colors.background).css}; }` +
-      `${this._terminalSelector} .${FG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR}.${DIM_CLASS} { color: ${color.multiplyOpacity(color.opaque(colors.background), 0.5).css}; }` +
+      `${this._terminalSelector} .${FG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR}.${RowCss.DIM_CLASS} { color: ${color.multiplyOpacity(color.opaque(colors.background), 0.5).css}; }` +
       `${this._terminalSelector} .${BG_CLASS_PREFIX}${INVERTED_DEFAULT_COLOR} { background-color: ${colors.foreground.css}; }`;
 
     this._themeStyleElement.textContent = styles;
   }
 
+  /**
+   * default letter spacing
+   * Due to rounding issues in dimensions dpr calc glyph might render
+   * slightly too wide or too narrow. The method corrects the stacking offsets
+   * by applying a default letter-spacing for all chars.
+   * The value gets passed to the row factory to avoid setting this value again
+   * (render speedup is roughly 10%).
+   */
+  private _setDefaultSpacing(): void {
+    // measure same char as in CharSizeService to get the base deviation
+    const spacing = this.dimensions.css.cell.width - this._widthCache.get('W', false, false);
+    this._rowContainer.style.letterSpacing = `${spacing}px`;
+    this._rowFactory.defaultSpacing = spacing;
+  }
+
   public handleDevicePixelRatioChange(): void {
     this._updateDimensions();
+    this._widthCache.clear();
+    this._setDefaultSpacing();
   }
 
   private _refreshRowElements(cols: number, rows: number): void {
     // Add missing elements
     for (let i = this._rowElements.length; i <= rows; i++) {
-      const row = document.createElement('div');
+      const row = this._document.createElement('div');
       this._rowContainer.appendChild(row);
       this._rowElements.push(row);
     }
@@ -259,26 +312,28 @@ export class DomRenderer extends Disposable implements IRenderer {
   public handleResize(cols: number, rows: number): void {
     this._refreshRowElements(cols, rows);
     this._updateDimensions();
+    this.handleSelectionChanged(this._selectionRenderModel.selectionStart, this._selectionRenderModel.selectionEnd, this._selectionRenderModel.columnSelectMode);
   }
 
   public handleCharSizeChanged(): void {
     this._updateDimensions();
+    this._widthCache.clear();
+    this._setDefaultSpacing();
   }
 
   public handleBlur(): void {
     this._rowContainer.classList.remove(FOCUS_CLASS);
+    this.renderRows(0, this._bufferService.rows - 1);
   }
 
   public handleFocus(): void {
     this._rowContainer.classList.add(FOCUS_CLASS);
+    this.renderRows(this._bufferService.buffer.y, this._bufferService.buffer.y);
   }
 
   public handleSelectionChanged(start: [number, number] | undefined, end: [number, number] | undefined, columnSelectMode: boolean): void {
     // Remove all selections
-    while (this._selectionContainer.children.length) {
-      this._selectionContainer.removeChild(this._selectionContainer.children[0]);
-    }
-
+    this._selectionContainer.replaceChildren();
     this._rowFactory.handleSelectionChanged(start, end, columnSelectMode);
     this.renderRows(0, this._bufferService.rows - 1);
 
@@ -287,11 +342,13 @@ export class DomRenderer extends Disposable implements IRenderer {
       return;
     }
 
+    this._selectionRenderModel.update(this._terminal, start, end, columnSelectMode);
+
     // Translate from buffer position to viewport position
-    const viewportStartRow = start[1] - this._bufferService.buffer.ydisp;
-    const viewportEndRow = end[1] - this._bufferService.buffer.ydisp;
-    const viewportCappedStartRow = Math.max(viewportStartRow, 0);
-    const viewportCappedEndRow = Math.min(viewportEndRow, this._bufferService.rows - 1);
+    const viewportStartRow = this._selectionRenderModel.viewportStartRow;
+    const viewportEndRow = this._selectionRenderModel.viewportEndRow;
+    const viewportCappedStartRow = this._selectionRenderModel.viewportCappedStartRow;
+    const viewportCappedEndRow = this._selectionRenderModel.viewportCappedEndRow;
 
     // No need to draw the selection
     if (viewportCappedStartRow >= this._bufferService.rows || viewportCappedEndRow < 0) {
@@ -299,7 +356,7 @@ export class DomRenderer extends Disposable implements IRenderer {
     }
 
     // Create the selections
-    const documentFragment = document.createDocumentFragment();
+    const documentFragment = this._document.createDocumentFragment();
 
     if (columnSelectMode) {
       const isXFlipped = start[0] > end[0];
@@ -331,11 +388,17 @@ export class DomRenderer extends Disposable implements IRenderer {
    * @param colEnd The end columns.
    */
   private _createSelectionElement(row: number, colStart: number, colEnd: number, rowCount: number = 1): HTMLElement {
-    const element = document.createElement('div');
+    const element = this._document.createElement('div');
+    const left = colStart * this.dimensions.css.cell.width;
+    let width = this.dimensions.css.cell.width * (colEnd - colStart);
+    if (left + width > this.dimensions.css.canvas.width) {
+      width = this.dimensions.css.canvas.width - left;
+    }
+
     element.style.height = `${rowCount * this.dimensions.css.cell.height}px`;
     element.style.top = `${row * this.dimensions.css.cell.height}px`;
-    element.style.left = `${colStart * this.dimensions.css.cell.width}px`;
-    element.style.width = `${this.dimensions.css.cell.width * (colEnd - colStart)}px`;
+    element.style.left = `${left}px`;
+    element.style.width = `${width}px`;
     return element;
   }
 
@@ -348,12 +411,21 @@ export class DomRenderer extends Disposable implements IRenderer {
     this._updateDimensions();
     // Refresh CSS
     this._injectCss(this._themeService.colors);
+    // update spacing cache
+    this._widthCache.setFont(
+      this._optionsService.rawOptions.fontFamily,
+      this._optionsService.rawOptions.fontSize,
+      this._optionsService.rawOptions.fontWeight,
+      this._optionsService.rawOptions.fontWeightBold
+    );
+    this._setDefaultSpacing();
   }
 
   public clear(): void {
     for (const e of this._rowElements) {
       /**
-       * NOTE: This used to be `e.innerText = '';` but that doesn't work when using `jsdom` and `@testing-library/react`
+       * NOTE: This used to be `e.innerText = '';` but that doesn't work when using `jsdom` and
+       * `@testing-library/react`
        *
        * references:
        * - https://github.com/testing-library/react-testing-library/issues/1146
@@ -364,19 +436,35 @@ export class DomRenderer extends Disposable implements IRenderer {
   }
 
   public renderRows(start: number, end: number): void {
-    const cursorAbsoluteY = this._bufferService.buffer.ybase + this._bufferService.buffer.y;
-    const cursorX = Math.min(this._bufferService.buffer.x, this._bufferService.cols - 1);
+    const buffer = this._bufferService.buffer;
+    const cursorAbsoluteY = buffer.ybase + buffer.y;
+    const cursorX = Math.min(buffer.x, this._bufferService.cols - 1);
     const cursorBlink = this._optionsService.rawOptions.cursorBlink;
+    const cursorStyle = this._optionsService.rawOptions.cursorStyle;
+    const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
 
     for (let y = start; y <= end; y++) {
+      const row = y + buffer.ydisp;
       const rowElement = this._rowElements[y];
-      const row = y + this._bufferService.buffer.ydisp;
-      const lineData = this._bufferService.buffer.lines.get(row);
-      const cursorStyle = this._optionsService.rawOptions.cursorStyle;
-      if (!this._cellToRowElements[y] || this._cellToRowElements[y].length !== this._bufferService.cols) {
-        this._cellToRowElements[y] = new Int16Array(this._bufferService.cols);
+      const lineData = buffer.lines.get(row);
+      if (!rowElement || !lineData) {
+        break;
       }
-      rowElement.replaceChildren(this._rowFactory.createRow(lineData!, row, row === cursorAbsoluteY, cursorStyle, cursorX, cursorBlink, this.dimensions.css.cell.width, this._bufferService.cols, this._cellToRowElements[y]));
+      rowElement.replaceChildren(
+        ...this._rowFactory.createRow(
+          lineData,
+          row,
+          row === cursorAbsoluteY,
+          cursorStyle,
+          cursorInactiveStyle,
+          cursorX,
+          cursorBlink,
+          this.dimensions.css.cell.width,
+          this._widthCache,
+          -1,
+          -1
+        )
+      );
     }
   }
 
@@ -393,26 +481,59 @@ export class DomRenderer extends Disposable implements IRenderer {
   }
 
   private _setCellUnderline(x: number, x2: number, y: number, y2: number, cols: number, enabled: boolean): void {
-    x = this._cellToRowElements[y][x];
-    x2 = this._cellToRowElements[y2][x2];
+    /**
+     * NOTE: The linkifier may send out of viewport y-values if:
+     * - negative y-value: the link started at a higher line
+     * - y-value >= maxY: the link ends at a line below viewport
+     *
+     * For negative y-values we can simply adjust x = 0,
+     * as higher up link start means, that everything from
+     * (0,0) is a link under top-down-left-right char progression
+     *
+     * Additionally there might be a small chance of out-of-sync x|y-values
+     * from a race condition of render updates vs. link event handler execution:
+     * - (sync) resize: chances terminal buffer in sync, schedules render update async
+     * - (async) link handler race condition: new buffer metrics, but still on old render state
+     * - (async) render update: brings term metrics and render state back in sync
+     */
+    // clip coords into viewport
+    if (y < 0) x = 0;
+    if (y2 < 0) x2 = 0;
+    const maxY = this._bufferService.rows - 1;
+    y = Math.max(Math.min(y, maxY), 0);
+    y2 = Math.max(Math.min(y2, maxY), 0);
 
-    if (x === -1 || x2 === -1) {
-      return;
-    }
+    cols = Math.min(cols, this._bufferService.cols);
+    const buffer = this._bufferService.buffer;
+    const cursorAbsoluteY = buffer.ybase + buffer.y;
+    const cursorX = Math.min(buffer.x, cols - 1);
+    const cursorBlink = this._optionsService.rawOptions.cursorBlink;
+    const cursorStyle = this._optionsService.rawOptions.cursorStyle;
+    const cursorInactiveStyle = this._optionsService.rawOptions.cursorInactiveStyle;
 
-    while (x !== x2 || y !== y2) {
-      const row = this._rowElements[y];
-      if (!row) {
-        return;
+    // refresh rows within link range
+    for (let i = y; i <= y2; ++i) {
+      const row = i + buffer.ydisp;
+      const rowElement = this._rowElements[i];
+      const bufferline = buffer.lines.get(row);
+      if (!rowElement || !bufferline) {
+        break;
       }
-      const span = row.children[x] as HTMLElement;
-      if (span) {
-        span.style.textDecoration = enabled ? 'underline' : 'none';
-      }
-      if (++x >= cols) {
-        x = 0;
-        y++;
-      }
+      rowElement.replaceChildren(
+        ...this._rowFactory.createRow(
+          bufferline,
+          row,
+          row === cursorAbsoluteY,
+          cursorStyle,
+          cursorInactiveStyle,
+          cursorX,
+          cursorBlink,
+          this.dimensions.css.cell.width,
+          this._widthCache,
+          enabled ? (i === y ? x : 0) : -1,
+          enabled ? ((i === y2 ? x2 : cols) - 1) : -1
+        )
+      );
     }
   }
 }

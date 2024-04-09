@@ -83,11 +83,10 @@ export function evaluateKeyboardEvent(
       break;
     case 8:
       // backspace
+      result.key = ev.ctrlKey ? '\b' : C0.DEL; // ^H or ^?
       if (ev.altKey) {
-        result.key = C0.ESC + C0.DEL; // \e ^?
-        break;
+        result.key = C0.ESC + result.key;
       }
-      result.key = C0.DEL; // ^?
       break;
     case 9:
       // tab
@@ -380,7 +379,8 @@ export function evaluateKeyboardEvent(
           result.type = KeyboardResultType.SELECT_ALL;
         }
       } else if (ev.key && !ev.ctrlKey && !ev.altKey && !ev.metaKey && ev.keyCode >= 48 && ev.key.length === 1) {
-        // Include only keys that that result in a _single_ character; don't include num lock, volume up, etc.
+        // Include only keys that that result in a _single_ character; don't include num lock,
+        // volume up, etc.
         result.key = ev.key;
       } else if (ev.key && ev.ctrlKey) {
         if (ev.key === '_') { // ^_
