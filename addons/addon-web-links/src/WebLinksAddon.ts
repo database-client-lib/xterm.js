@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import type { Terminal, ITerminalAddon, IDisposable } from '@xterm/xterm';
+import type { Terminal, ITerminalAddon, IDisposable } from '@cweijan/xterm';
 import type { WebLinksAddon as IWebLinksApi } from '@xterm/addon-web-links';
 import { ILinkProviderOptions, WebLinkProvider } from './WebLinkProvider';
 

@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import type { ITerminalAddon, Terminal } from '@xterm/xterm';
+import type { ITerminalAddon, Terminal } from '@cweijan/xterm';
 import type { CanvasAddon as ICanvasApi } from '@xterm/addon-canvas';
 import { ICharacterJoinerService, ICharSizeService, ICoreBrowserService, IRenderService, IThemeService } from 'browser/services/Services';
 import { ITerminal } from 'browser/Types';

@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import type { Terminal } from '@xterm/xterm';
+import type { Terminal } from '@cweijan/xterm';
 import type { LigaturesAddon as ILigaturesApi } from '@xterm/addon-ligatures';
 import { enableLigatures } from '.';
 import { ILigatureOptions } from './Types';

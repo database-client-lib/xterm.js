@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import { ILinkProvider, ILink, Terminal, IViewportRange, IBufferLine } from '@xterm/xterm';
+import { ILinkProvider, ILink, Terminal, IViewportRange, IBufferLine } from '@cweijan/xterm';
 
 export interface ILinkProviderOptions {
   hover?(event: MouseEvent, text: string, location: IViewportRange): void;

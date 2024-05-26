@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import type { Terminal } from '@xterm/xterm';
+import type { Terminal } from '@cweijan/xterm';
 import { Font } from 'font-ligatures';
 
 import load from './font';

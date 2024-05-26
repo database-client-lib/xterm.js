@@ -13,7 +13,7 @@ npm install --save @xterm/addon-canvas
 ### Usage
 
 ```ts
-import { Terminal } from '@xterm/xterm';
+import { Terminal } from '@cweijan/xterm';
 import { CanvasAddon } from '@xterm/addon-canvas';
 
 const terminal = new Terminal();

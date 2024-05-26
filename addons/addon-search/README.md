@@ -11,7 +11,7 @@ npm install --save @xterm/addon-search
 ### Usage
 
 ```ts
-import { Terminal } from '@xterm/xterm';
+import { Terminal } from '@cweijan/xterm';
 import { SearchAddon } from '@xterm/addon-search';
 
 const terminal = new Terminal();

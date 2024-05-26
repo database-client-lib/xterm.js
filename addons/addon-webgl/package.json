@@ -23,6 +23,6 @@
     "start-server-only": "node ../../demo/start-server-only"
   },
   "peerDependencies": {
-    "@xterm/xterm": "^5.0.0"
+    "@cweijan/xterm": "^5.0.0"
   }
 }

@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import { Terminal, ITerminalAddon, IMarker, IBufferRange } from '@xterm/xterm';
+import { Terminal, ITerminalAddon, IMarker, IBufferRange } from '@cweijan/xterm';
 
 declare module '@xterm/addon-serialize' {
   /**

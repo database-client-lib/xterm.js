@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import type { ITerminalAddon, IDisposable } from '@xterm/xterm';
+import type { ITerminalAddon, IDisposable } from '@cweijan/xterm';
 import type { ImageAddon as IImageApi } from '@xterm/addon-image';
 import { IIPHandler } from './IIPHandler';
 import { ImageRenderer } from './ImageRenderer';

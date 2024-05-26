@@ -9,7 +9,7 @@
 
 /// <reference lib="dom"/>
 
-declare module '@xterm/xterm' {
+declare module '@cweijan/xterm' {
   /**
    * A string or number representing text font weight.
    */

@@ -21,7 +21,7 @@
     "prepublishOnly": "npm run package"
   },
   "peerDependencies": {
-    "@xterm/xterm": "^5.0.0"
+    "@cweijan/xterm": "^5.0.0"
   }
 
 }

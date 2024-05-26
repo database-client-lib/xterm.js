@@ -5,7 +5,7 @@
  * UnicodeVersionProvider for V11.
  */
 
-import type { Terminal, ITerminalAddon } from '@xterm/xterm';
+import type { Terminal, ITerminalAddon } from '@cweijan/xterm';
 import type { Unicode11Addon as IUnicode11Api } from '@xterm/addon-unicode11';
 import { UnicodeV11 } from './UnicodeV11';
 

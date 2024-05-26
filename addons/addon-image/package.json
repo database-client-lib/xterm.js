@@ -22,7 +22,7 @@
     "prepublishOnly": "npm run package"
   },
   "peerDependencies": {
-    "@xterm/xterm": "^5.2.0"
+    "@cweijan/xterm": "^5.2.0"
   },
   "devDependencies": {
     "sixel": "^0.16.0",

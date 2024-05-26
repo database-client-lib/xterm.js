@@ -5,7 +5,7 @@
  * UnicodeVersionProvider for V15 with grapeme cluster handleing.
  */
 
-import type { Terminal, ITerminalAddon, IUnicodeHandling } from '@xterm/xterm';
+import type { Terminal, ITerminalAddon, IUnicodeHandling } from '@cweijan/xterm';
 import type { UnicodeGraphemesAddon as IUnicodeGraphemesApi } from '@xterm/addon-unicode-graphemes';
 import { UnicodeGraphemeProvider } from './UnicodeGraphemeProvider';
 

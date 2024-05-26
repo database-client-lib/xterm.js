@@ -3,7 +3,7 @@
  * @license MIT
  */
 
-import { Terminal, ITerminalAddon } from '@xterm/xterm';
+import { Terminal, ITerminalAddon } from '@cweijan/xterm';
 
 declare module '@xterm/addon-unicode-graphemes' {
   export class UnicodeGraphemesAddon implements ITerminalAddon {

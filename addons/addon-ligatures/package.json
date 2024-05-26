@@ -42,6 +42,6 @@
     "yauzl": "^2.10.0"
   },
   "peerDependencies": {
-    "@xterm/xterm": "^5.0.0"
+    "@cweijan/xterm": "^5.0.0"
   }
 }
