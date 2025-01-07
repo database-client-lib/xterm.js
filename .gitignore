@@ -16,6 +16,7 @@ npm-debug.log
 .env
 build/
 .DS_Store
+yarn.lock
 package-lock.json
 
 # Keep bundled code out of Git
