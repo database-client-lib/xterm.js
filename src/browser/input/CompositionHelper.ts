@@ -93,12 +93,13 @@ export class CompositionHelper {
    */
   public keydown(ev: KeyboardEvent): boolean {
     if (this._isComposing || this._isSendingComposition) {
-      if (ev.keyCode === 229) {
+      if (ev.keyCode === 0 || ev.keyCode === 20 || ev.keyCode === 229) {
+        // 0 is Unidentified(CapsLock in Safari), 20 is CapsLock, 229 is Enter
         // Continue composing if the keyCode is the "composition character"
         return false;
       }
       if (ev.keyCode === 16 || ev.keyCode === 17 || ev.keyCode === 18) {
-        // Continue composing if the keyCode is a modifier key
+        // Continue composing if the keyCode is a modifier key(16, 17, 18 are Shift, Ctrl, Alt)
         return false;
       }
       // Finish composition immediately. This is mainly here for the case where enter is
