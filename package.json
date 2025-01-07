@@ -1,11 +1,11 @@
 {
-  "name": "@xterm/xterm",
+  "name": "@cweijan/xterm",
   "description": "Full xterm terminal, in your browser",
-  "version": "5.5.0",
+  "version": "5.6.1",
   "main": "lib/xterm.js",
   "style": "css/xterm.css",
   "types": "typings/xterm.d.ts",
-  "repository": "https://github.com/xtermjs/xterm.js",
+  "repository": "https://github.com/database-client-lib/xterm.js",
   "license": "MIT",
   "keywords": [
     "cli",
