@@ -77,30 +77,31 @@ interface IDemoAddon<T extends AddonType> {
   canChange: boolean;
   ctor: (
     T extends 'attach' ? typeof AttachAddon :
-      T extends 'canvas' ? typeof CanvasAddon :
-        T extends 'fit' ? typeof FitAddon :
-          T extends 'image' ? typeof ImageAddonType :
-            T extends 'search' ? typeof SearchAddon :
-              T extends 'serialize' ? typeof SerializeAddon :
-                T extends 'webLinks' ? typeof WebLinksAddon :
-                  T extends 'unicode11' ? typeof Unicode11Addon :
-                    T extends 'unicodeGraphemes' ? typeof UnicodeGraphemesAddon :
-                      T extends 'ligatures' ? typeof LigaturesAddon :
-                        typeof WebglAddon
+    T extends 'clipboard' ? typeof ClipboardAddon :
+    T extends 'fit' ? typeof FitAddon :
+    T extends 'image' ? typeof ImageAddonType :
+    T extends 'ligatures' ? typeof LigaturesAddon :
+    T extends 'search' ? typeof SearchAddon :
+    T extends 'serialize' ? typeof SerializeAddon :
+    T extends 'webLinks' ? typeof WebLinksAddon :
+    T extends 'unicode11' ? typeof Unicode11Addon :
+    T extends 'unicodeGraphemes' ? typeof UnicodeGraphemesAddon :
+    T extends 'webgl' ? typeof WebglAddon :
+    never
   );
   instance?: (
     T extends 'attach' ? AttachAddon :
-      T extends 'canvas' ? CanvasAddon :
-        T extends 'fit' ? FitAddon :
-          T extends 'image' ? ImageAddonType :
-            T extends 'search' ? SearchAddon :
-              T extends 'serialize' ? SerializeAddon :
-                T extends 'webLinks' ? WebLinksAddon :
-                  T extends 'webgl' ? WebglAddon :
-                    T extends 'unicode11' ? typeof Unicode11Addon :
-                      T extends 'unicodeGraphemes' ? typeof UnicodeGraphemesAddon :
-                        T extends 'ligatures' ? typeof LigaturesAddon :
-                          never
+    T extends 'clipboard' ? ClipboardAddon :
+    T extends 'fit' ? FitAddon :
+    T extends 'image' ? ImageAddonType :
+    T extends 'ligatures' ? LigaturesAddon :
+    T extends 'search' ? SearchAddon :
+    T extends 'serialize' ? SerializeAddon :
+    T extends 'webLinks' ? WebLinksAddon :
+    T extends 'unicode11' ? Unicode11Addon :
+    T extends 'unicodeGraphemes' ? UnicodeGraphemesAddon :
+    T extends 'webgl' ? WebglAddon :
+    never
   );
 }
 
@@ -414,21 +415,12 @@ function runFakeTerminal(): void {
   term.writeln('Type some keys and commands to play around.');
   term.writeln('');
   term.prompt();
-
-  term.onKey((e: { key: string, domEvent: KeyboardEvent }) => {
-    const ev = e.domEvent;
-    const printable = !ev.altKey && !ev.ctrlKey && !ev.metaKey;
-
-    if (ev.keyCode === 13) {
-      term.prompt();
-    } else if (ev.keyCode === 8) {
-      // Do not delete the prompt
-      if (term._core.buffer.x > 2) {
-        term.write('\b \b');
-      }
-    } else if (printable) {
-      term.write(e.key);
+  term.onData(data => {
+    let seq = data;
+    if (seq === '\x7F') {
+      seq = '\b \b';
     }
+    term.write(seq);
   });
 }
 
@@ -1174,7 +1166,7 @@ function addOverviewRuler(): void {
   function getBox(width: number, height: number): any {
     return {
       string: '+',
-      style: 'font-size: 1px; padding: ' + Math.floor(height/2) + 'px ' + Math.floor(width/2) + 'px; line-height: ' + height + 'px;'
+      style: 'font-size: 1px; padding: ' + Math.floor(height / 2) + 'px ' + Math.floor(width / 2) + 'px; line-height: ' + height + 'px;'
     };
   }
   if (source instanceof HTMLCanvasElement) {
@@ -1231,23 +1223,24 @@ function addVtButtons(): void {
     return container;
   }
   const vtFragment = document.createDocumentFragment();
-  const buttonSpecs: { [key: string]: { label: string, description: string, paramCount?: number }} = {
-    A:    { label: 'CUU ↑',  description: 'Cursor Up Ps Times' },
-    B:    { label: 'CUD ↓',  description: 'Cursor Down Ps Times' },
-    C:    { label: 'CUF →',  description: 'Cursor Forward Ps Times' },
-    D:    { label: 'CUB ←',  description: 'Cursor Backward Ps Times' },
-    E:    { label: 'CNL',    description: 'Cursor Next Line Ps Times' },
-    F:    { label: 'CPL',    description: 'Cursor Preceding Line Ps Times' },
-    G:    { label: 'CHA',    description: 'Cursor Character Absolute' },
-    H:    { label: 'CUP',    description: 'Cursor Position [row;column]', paramCount: 2 },
-    I:    { label: 'CHT',    description: 'Cursor Forward Tabulation Ps tab stops' },
-    J:    { label: 'ED',     description: 'Erase in Display' },
-    '?J': { label: 'DECSED', description: 'Erase in Display' },
-    K:    { label: 'EL',     description: 'Erase in Line' },
-    '?K': { label: 'DECSEL', description: 'Erase in Line' },
-    L:    { label: 'IL',     description: 'Insert Ps Line(s)' },
-    M:    { label: 'DL',     description: 'Delete Ps Line(s)' },
-    P:    { label: 'DCH',    description: 'Delete Ps Character(s)' }
+  const buttonSpecs: { [key: string]: { label: string, description: string, paramCount?: number } } = {
+    A: { label: 'CUU ↑', description: 'Cursor Up Ps Times' },
+    B: { label: 'CUD ↓', description: 'Cursor Down Ps Times' },
+    C: { label: 'CUF →', description: 'Cursor Forward Ps Times' },
+    D: { label: 'CUB ←', description: 'Cursor Backward Ps Times' },
+    E: { label: 'CNL', description: 'Cursor Next Line Ps Times' },
+    F: { label: 'CPL', description: 'Cursor Preceding Line Ps Times' },
+    G: { label: 'CHA', description: 'Cursor Character Absolute' },
+    H: { label: 'CUP', description: 'Cursor Position [row;column]', paramCount: 2 },
+    I: { label: 'CHT', description: 'Cursor Forward Tabulation Ps tab stops' },
+    J: { label: 'ED', description: 'Erase in Display' },
+    '?|J': { label: 'DECSED', description: 'Erase in Display' },
+    K: { label: 'EL', description: 'Erase in Line' },
+    '?|K': { label: 'DECSEL', description: 'Erase in Line' },
+    L: { label: 'IL', description: 'Insert Ps Line(s)' },
+    M: { label: 'DL', description: 'Delete Ps Line(s)' },
+    P: { label: 'DCH', description: 'Delete Ps Character(s)' },
+    ' q': { label: 'DECSCUSR', description: 'Set Cursor Style', paramCount: 1 }
   };
   for (const s of Object.keys(buttonSpecs)) {
     const spec = buttonSpecs[s];
@@ -1371,6 +1364,6 @@ function initImageAddonExposed(): void {
 }
 
 function testEvents(): void {
-  document.getElementById('event-focus').addEventListener('click', ()=> term.focus());
-  document.getElementById('event-blur').addEventListener('click', ()=> term.blur());
+  document.getElementById('event-focus').addEventListener('click', () => term.focus());
+  document.getElementById('event-blur').addEventListener('click', () => term.blur());
 }
